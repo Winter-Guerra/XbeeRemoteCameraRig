@@ -7,14 +7,22 @@ uint8_t testLEDPin = 13;
 uint8_t cameraAddress[] = {0x10,0x00};
 uint8_t controllerAddress[] = {0x20,0x00};
 
+uint8_t channel[] = {0x11}; //Channel
+uint8_t panID[] = {0x11,0x11}; //Personal Area Network
+
 uint8_t payload[40]; //Payload buffer. Clean this promptly after using!!!!!
 uint8_t recievedPayload[40]; //Buffer for the recieved data. Clean promptly after using!
 
 //XBee AT commands. USE PROGMEM TO SAVE SPACE!
-uint8_t ATMY[] = { 'M', 'Y' };
-uint8_t ATWR[] = { 'W', 'R' };
-uint8_t ATSH[] = { 'S', 'H' };
-uint8_t ATSL[] = { 'S', 'L' };
+uint8_t ATMY[] = { 'M', 'Y' }; //my 16 bit address
+uint8_t ATCH[] = { 'C', 'H' }; //channel
+uint8_t ATID[] = { 'I', 'D' }; //PANID
+uint8_t ATDH[] = { 'D', 'H' }; //Destination address HIGH
+uint8_t ATDL[] = { 'D', 'L' }; //Destination address LOW
+uint8_t ATWR[] = { 'W', 'R' }; //write settings to xbee
+uint8_t ATAC[] = { 'A', 'C' }; //Apply changes to xbee
+
+
 
 
 //*****Reusable Instances!!******//
@@ -25,21 +33,21 @@ AtCommandResponse atResponse = AtCommandResponse();
 
 void setup() {
   pinMode(testLEDPin, OUTPUT);
+  
+  /*pinMode(2,OUTPUT);
+  pinMode(3,OUTPUT);
+  digitalWrite(2,LOW);
+  digitalWrite(3,LOW);*/
+  
 
-  Serial1.begin(9600); //Start talking to the Xbee
+  Serial1.begin(57600); //Start talking to the Xbee
   xbee.setSerial(Serial1); //set the xbee to use Serialport 1
   Serial.begin(115200); //Start the debugging prompt.
 
   Serial.println("Hello World! Setting up the Xbee modems to their corresponding addresses.");//USE PROGMEM!!!!
   delay(5000); //Wait for the XBee to initialize. 5 sec pause.
   
-  atRequest = AtCommandRequest(ATMY,cameraAddress,2); //Set our address
-	sendAtCommand();//Send the command
-
-atRequest = AtCommandRequest(ATWR); //Set the settings
-	sendAtCommand();//Send the command
-
-  
+  setupXbeeCamera();
   
 }
 
@@ -52,61 +60,26 @@ void loop() {
 
 
 void sendAtCommand() {
-  Serial.println("Sending command to the XBee"); //Debug
-
-  xbee.send(atRequest); //Send the command packet.
-  // wait up to 5 seconds for the status response
-  if (xbee.readPacket(5000)) {
-    // got a response!
-
-    // should be an AT command response
-    if (xbee.getResponse().getApiId() == AT_COMMAND_RESPONSE) {
-      xbee.getResponse().getAtCommandResponse(atResponse);
-
-      if (atResponse.isOk()) {
-        Serial.print("Command [");
-        Serial.print(atResponse.getCommand()[0]);
-        Serial.print(atResponse.getCommand()[1]);
-        Serial.println("] was successful!");
-
-        if (atResponse.getValueLength() > 0) {
-          Serial.print("Command value length is ");
-          Serial.println(atResponse.getValueLength(), DEC);
-
-          Serial.print("Command value: "); //Is this a masked value? Aka, is a 64 bit addresss passed as one or multiple bytes?
-
-          for (int i = 0; i < atResponse.getValueLength(); i++) {
-            Serial.print(atResponse.getValue()[i], HEX);
-            Serial.print(" ");
-          }
-
-          Serial.println("");
-        }
-      } 
-      else {
-        Serial.print("Command return error code: ");
-        Serial.println(atResponse.getStatus(), HEX);
-      }
-    } 
-    else {
-      Serial.print("Expected AT response but got ");
-      Serial.print(xbee.getResponse().getApiId(), HEX);
-    }
-  } 
-  else {
-    // at command failed
-    if (xbee.getResponse().isError()) {
-      Serial.print("Error reading packet.  Error code: ");
-      Serial.println(xbee.getResponse().getErrorCode());
-    } 
-    else {
-      Serial.print("No response from radio");
-    }
+  //Flush buffer
+  //Serial1.flush();
+  
+  //Send the command then wait for the response
+  
+  xbee.send(atRequest);
+   
+   uint8_t responseCode = readPacketBuffer();
+  if (responseCode == 30 || responseCode == 31) {
+   //success! we got a packet! Now lets just double check here...
+   //Nope! Good enough for me!
+  } else {
+    //error!
+  Serial.println("AT Error");
   }
+  delay(1);
 }
 
 
-uint8_t handleCommandAftermath() {
+uint8_t readPacketBuffer() {
   uint8_t returnStatus = 0;
   //The return status codes go like this.... 
   //0 is no packet was recieved Is the device unplugged?
@@ -120,7 +93,7 @@ uint8_t handleCommandAftermath() {
   
   // after sending a TX request, we expect a status response
   // wait up to 500 mseconds for the status response
-  if (xbee.readPacket(100)) {
+  if (xbee.readPacket(1000)) {
     // got a response!
     // should be a znet tx status
     if (xbee.getResponse().getApiId() == TX_STATUS_RESPONSE) { //We got a transmission response packet!!
@@ -160,7 +133,7 @@ xbee.getResponse().getAtCommandResponse(atResponse);
 
           Serial.println("");
           returnStatus = 31;
-        } else { //The AT command did not return anything. That's ok too!
+        } else { //The AT command did not return any data. That's ok too! It was sucessful.
         returnStatus = 30;
         }
       } 
@@ -196,6 +169,25 @@ void cleanRXPacket() {
     //clean the packet!
     recievedPayload[i] = '\0';
   }
+}
+
+void setupXbeeCamera() {
+ //Send address settup commands to XBEE 
+
+atRequest = AtCommandRequest(ATMY,cameraAddress,2); //Set our address
+	sendAtCommand();//Send the command
+
+atRequest = AtCommandRequest(ATCH,channel,1); //Set our current channel
+	sendAtCommand();//Send the command
+
+atRequest = AtCommandRequest(ATID,panID,2); //Set our current Personal Area Network
+	sendAtCommand();//Send the command
+
+atRequest = AtCommandRequest(ATWR); //Write setting to memory
+	sendAtCommand();//Send the command
+
+atRequest = AtCommandRequest(ATAC); //Apply changes
+	sendAtCommand();//Send the command
 }
 
 
