@@ -9,6 +9,23 @@
 
 uint8_t testLEDPin = 13;
 
+uint8_t RTS = 2; //Arduino must pull this high if it wants the Xbee to stop sending (unused)
+uint8_t CTS = 3; //If CTS is pulled high by the Xbee, Stop sending data.
+
+//Analog Inputs
+uint8_t potXPin = 0;
+uint8_t potYPin = 1;
+uint8_t potZPin = 2;
+
+//Array to quickly access, save and send the analog data
+uint8_t potPins[] = {
+  potXPin,potYPin,potZPin};
+
+uint16_t potVals[3]; //Potval containers
+uint8_t iterations = 4; //averaging iterations
+
+
+
 uint8_t cameraAddress[] = { //Address of the Camera
   0x10,0x00};
 uint8_t controllerAddress[] = { //Address of the Controller
@@ -46,10 +63,10 @@ Rx16Response rx16 = Rx16Response();
 
 void setup() {
   pinMode(testLEDPin, OUTPUT);
-  
-  #if IS_CONTROLLER == 1 
-  setupControllerPins();
-#else
+  pinMode(RTS,INPUT);
+  pinMode(CTS,INPUT);
+
+#if IS_CONTROLLER == 0
   setupCameraPins();
 #endif
 
@@ -76,7 +93,7 @@ void loop() {
 #else
   runCameraSlice();
 #endif
-
+delay(20);
 }
 
 
@@ -245,26 +262,61 @@ void setupXbeeGlobalSettings() {
 
 void runControllerSlice() {
   //Sample the pots, map them to the step space and then send at regular intervals.
+  //Debug messages
+#if DEBUG_MODE 
+  //Serial.println("Start Cont Slice");
+#endif
+
+  readPots();
 
 }
 
 void runCameraSlice() {
   //check if a new packet is available. If so, log the time it has been since the last packet to try to gauge the average packet delay.
   //calculate the speed the steppers need to run at to get to their destination position based on delta and the time till the next pack
- 
 
 }
 
-void setupControllerPins() {
-  //setup all the pins we will need as a controller (this mainly includes the Pot pins)
-  
-  pinMode()
-  
-}
 
 void setupCameraPins() {
-  
+  //Setup the stepper pins
+
 }
+
+void readPots() {
+  //Read and average the pots
+  uint32_t average[3] = {
+    0,0,0  }; //temp
+
+  for (int i = 0; i < iterations; i++ ) { //get vals from all the pins and average them all out
+    for (int x = 0; x < 3; x++){
+
+      int16_t boundsCheck = analogRead(potPins[x]);
+
+      if (boundsCheck <= 1023 && boundsCheck >= 0) {
+        average[x] += boundsCheck;
+      } 
+      else if (boundsCheck > 1023){
+        average[x] += 1023; //No need for a third case here. adding zero will not affect anything.
+      }
+
+    }
+  }
+
+  for (int i = 0; i < 3; i++) { //average it out
+    potVals[i] = average[i]/iterations;
+#if DEBUG_MODE
+    Serial.print("Pot");
+    Serial.print(i);
+    Serial.print("Val:");
+    Serial.println(potVals[i]);
+#endif
+  }
+
+}
+
+
+
 
 
 
