@@ -32,6 +32,12 @@ uint8_t yStepperDir = 8;
 uint8_t xStepperStep = 9;
 uint8_t yStepperStep = 10;
 
+uint8_t microStepping = 16; //Microsteps per step
+uint8_t gearRatio = 2; //for every rotation of the big gear, the stepper gear must rotate this many times.
+uint16_t stepperStepsPerRotation = 200;
+uint16_t stepsPerRotation = microStepping * stepperStepsPerRotation * gearRatio; //steps per rotation.
+uint16_t stepRange = (stepsPerRotation*3)/4;
+
 //Analog Inputs
 uint8_t potXPin = 0;
 uint8_t potYPin = 1;
@@ -43,6 +49,10 @@ uint8_t potPins[] = {
 
 uint16_t potVals[3]; //Potval containers
 uint8_t iterations = 4; //averaging iterations
+
+//Values used for mapping the pot rotations to big gear rotations
+uint16_t analogMaxVal = 1023;
+
 
 
 uint8_t cameraAddress[] = { //Address of the Camera
