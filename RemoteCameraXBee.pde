@@ -2,7 +2,7 @@
 #include "types.h"
 
 #define IS_CONTROLLER 1 //Is this the camera controller? Or the reciever?
-#define DEBUG_MODE IS_CONTROLLER && 0 //Do we want debug output on the serial line?
+#define DEBUG_MODE IS_CONTROLLER && 1 //Do we want debug output on the serial line?
 
 
 #define AT_COMMAND_DELAY 10 //In milliseconds
@@ -11,8 +11,12 @@
 #define PAYLOAD_LENGTH 10
 
 
-uint8_t statusPin = A0;
-uint8_t errorPin = A1;
+uint8_t statusLED = 11; //This LED is here just to make sure that the Arduino is on an at least running the program. Should this be a TX/RX light instead?
+uint8_t errorLED = 12; //This LED (RED) will light up if there is an error. It will turn off after a while... 
+
+boolean errorState = false;
+uint32_t errorLEDMillis = 0; //This var will keep track of the last time an error was triggered. The error will be dismissed after millis() - errorLEDMillis >= errorTimeout
+uint32_t errorTimeout = 500; //This is the time after the error is triggered to dismiss it.
 
 uint8_t RTS = 2; //Arduino must pull this high if it wants the Xbee to stop sending (unused)
 uint8_t CTS = 3; //If CTS is pulled high by the Xbee, Stop sending data.
@@ -88,8 +92,8 @@ AtCommandResponse atResponse = AtCommandResponse();
 Rx16Response rx16 = Rx16Response();
 
 void setup() {
-  pinMode(statusPin, OUTPUT);
-  pinMode(errorPin, OUTPUT);
+  pinMode(statusLED, OUTPUT);
+  pinMode(errorLED, OUTPUT);
 
   pinMode(RTS,INPUT);
   pinMode(CTS,INPUT);
@@ -117,6 +121,7 @@ void loop() {
 #else
   runCameraSlice();
 #endif
+handleStatusLEDs();
   delay(20);
 }
 
@@ -136,6 +141,7 @@ void sendAtCommand() {
   } 
   else {
     //error!
+    turnOnErrorLED();
 #if DEBUG_MODE
     Serial.println("AT Error");
 #endif
@@ -167,6 +173,7 @@ void sendTxPositionPacket(int16_t *stepperPos) {
     //success! 
   } 
   else {
+    turnOnErrorLED();
 #if DEBUG_MODE == 1
     Serial.println("Pos packet failed!");
 #endif
@@ -190,25 +197,6 @@ returnPacketStates readPacketBuffer() { //Enumerated return vals!
   // wait up to 500 mseconds for the status response
   if (xbee.readPacket(1000)) {
     // got a response!
-    // should be a znet tx status
-    /*if (xbee.getResponse().getApiId() == TX_STATUS_RESPONSE) { //We got a transmission response packet!!
-     xbee.getResponse().getZBTxStatusResponse(txStatus);
-     
-     // get the delivery status, the fifth byte
-     if (txStatus.getStatus() == SUCCESS) {
-     // success.  time to celebrate
-     #if DEBUG_MODE
-     Serial.println("Packet sent with ACK!");
-     #endif
-     returnStatus = 1;
-     } 
-     else {
-     // the remote XBee did not receive our packet. is it powered on?
-     #if DEBUG_MODE
-     Serial.println("Packet transmission failed.....");
-     #endif
-     returnStatus = 2;
-     } */
 
     if (xbee.getResponse().getApiId() == AT_COMMAND_RESPONSE) { //We got a response to our AT command!
       xbee.getResponse().getAtCommandResponse(atResponse);
@@ -243,6 +231,7 @@ returnPacketStates readPacketBuffer() { //Enumerated return vals!
         }
       } 
       else {
+        turnOnErrorLED();
 #if DEBUG_MODE
         Serial.print("Command return error code: ");
         Serial.println(atResponse.getStatus(), HEX);
@@ -267,6 +256,7 @@ returnPacketStates readPacketBuffer() { //Enumerated return vals!
       } 
       else {
         //Awww, The TX was not successful!
+        turnOnErrorLED();
         returnStatus = TX_FAIL;
       }  
       //isSuccess() 
@@ -275,7 +265,10 @@ returnPacketStates readPacketBuffer() { //Enumerated return vals!
   } 
   else {
     // local XBee did not provide a timely TX Status Response -- should not happen
+    #if DEBUG_MODE == 1
     Serial.println("Wait, WTF? The Xbee did not respond!!!!");
+    #endif
+    turnOnErrorLED();
     returnStatus = COMM_FAIL;
 
   }
@@ -297,6 +290,27 @@ void cleanRXPacket() {
     //clean the packet!
     recievedPayload[i] = '\0';
   }
+}
+
+void turnOnErrorLED() {
+ //Crap! There has been an error! Quick! Flash some red leds! That should fix the problem!
+//Log the last time an error has been triggered so that the handleStatusLEDs() function knows when to dismiss the error.
+errorLEDMillis = millis();
+errorState = true;
+  digitalWrite(errorLED, HIGH);
+
+}
+
+void handleStatusLEDs() {
+ //Check the states of the error LEDs and turn them off if the error has not been seen for a while 
+if (errorState == true) { 
+  //There has been an error recently, lets see if it's time to dismiss.
+if (millis()-errorLEDMillis >= errorTimeout) {
+   //The error has expired!
+   errorState = false;
+   digitalWrite(errorLED, LOW);
+ }
+}
 }
 
 void setupXbeeCameraAddress() {
@@ -349,6 +363,12 @@ void runCameraSlice() {
 
 void setupCameraPins() {
   //Setup the stepper pins
+  pinMode(xStepperEnable, INPUT);
+pinMode(yStepperEnable, INPUT);
+pinMode(xStepperDir, INPUT);
+pinMode(yStepperDir, INPUT);
+pinMode(xStepperStep, INPUT);
+pinMode(yStepperStep, INPUT);
 
 }
 
@@ -374,7 +394,7 @@ void setupControllerSerial() {
 void readPots() {
   //Read and average the pots
   uint32_t average[3] = {
-    0,0,0        }; //temp
+    0,0,0          }; //temp
 
   for (int i = 0; i < iterations; i++ ) { //get vals from all the pins and average them all out
     for (int x = 0; x < 3; x++){
@@ -402,6 +422,3 @@ void readPots() {
   }
 
 }
-
-
-
