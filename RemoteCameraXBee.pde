@@ -1,7 +1,7 @@
 #include <XBee.h>
 #include "types.h"
 
-#define IS_CONTROLLER 1 //Is this the camera controller? Or the reciever?
+#define IS_CONTROLLER 0 //Is this the camera controller? Or the reciever?
 #define DEBUG_MODE IS_CONTROLLER && 1 //Do we want debug output on the serial line?
 
 
@@ -22,7 +22,7 @@ uint8_t RTS = 2; //Arduino must pull this high if it wants the Xbee to stop send
 uint8_t CTS = 3; //If CTS is pulled high by the Xbee, Stop sending data.
 
 //Number of steppers to control
-uint8_t stepperCount = 2;
+#define STEPPER_COUNT 2
 
 //Definition of stepper pins
 uint8_t xStepperEnable = 5;
@@ -32,11 +32,21 @@ uint8_t yStepperDir = 8;
 uint8_t xStepperStep = 9;
 uint8_t yStepperStep = 10;
 
-uint8_t microStepping = 16; //Microsteps per step
-uint8_t gearRatio = 2; //for every rotation of the big gear, the stepper gear must rotate this many times.
-uint16_t stepperStepsPerRotation = 200;
-uint16_t stepsPerRotation = microStepping * stepperStepsPerRotation * gearRatio; //steps per rotation.
-uint16_t stepRange = (stepsPerRotation*3)/4;
+//Vars for the X rot axis (pan)
+uint8_t xMicroStepping = 16; //Microsteps per step
+uint8_t xGearRatio = 2; //for every rotation of the big gear, the stepper gear must rotate this many times.
+uint16_t xStepperStepsPerRotation = 200;
+uint16_t xStepsPerRotation = xMicroStepping * xStepperStepsPerRotation * xGearRatio; //steps per rotation.
+uint16_t xStepRange = (xStepsPerRotation*3)/4; //This axis only has 360/4 degrees of motion (90 degrees)
+
+//Vars for the Y rot axis (Up/Down pitch)
+uint8_t yMicroStepping = 16; //Microsteps per step
+uint8_t yGearRatio = 2; //for every rotation of the big gear, the stepper gear must rotate this many times.
+uint16_t yStepperStepsPerRotation = 200;
+uint16_t yStepsPerRotation = yMicroStepping * yStepperStepsPerRotation * yGearRatio; //steps per rotation.
+uint16_t yStepRange = (yStepsPerRotation)/4; //This axis can rotate 270 degrees 
+
+uint16_t stepperRanges[] = {xStepRange, yStepRange};
 
 //Analog Inputs
 uint8_t potXPin = 0;
@@ -47,11 +57,14 @@ uint8_t potZPin = 2;
 uint8_t potPins[] = {
   potXPin,potYPin,potZPin};
 
-uint16_t potVals[3]; //Potval containers
+uint16_t potVals[STEPPER_COUNT]; //Potval containers
+uint16_t potConvertedToSteps[STEPPER_COUNT]; //Potvals converted to steps
+uint16_t oldPotVals[] = {0,0}; //For anti-jitter purposes
 uint8_t iterations = 4; //averaging iterations
 
 //Values used for mapping the pot rotations to big gear rotations
 uint16_t analogMaxVal = 1023;
+
 
 
 
@@ -138,7 +151,11 @@ handleStatusLEDs();
 
 void sendAtCommand() {
   //Flush buffer
+  #if IS_CONTROLLER == 1
   Serial1.flush();
+  #else
+  Serial.flush();
+  #endif
 
   //Send the command then wait for the response
 
@@ -159,23 +176,21 @@ void sendAtCommand() {
   delay(AT_COMMAND_DELAY); //Delay to not overload the XBee input line
 }
 
-void sendTxPositionPacket(int16_t *stepperPos) {
+void sendTxPositionPacket(uint16_t *stepperPos) {
   //Send a packet to the camera containing a stepper x and y pos
   cleanPayload();
 
   payload[0] = positionCommandCode;
 
-  for (int i = 0; i < stepperCount; i++) {
+  for (int i = 0; i < STEPPER_COUNT; i++) {
     payload[i+1] = stepperPos[i] >> 8 && 0xFF; //High byte
     payload[i+2] = stepperPos[i] && 0xFF; //Low byte
   }
 
 
 
-  txRequest = Tx16Request(cameraAddress16, payload, (stepperCount*2)+1);
+  txRequest = Tx16Request(cameraAddress16, payload, (STEPPER_COUNT*2)+1);
   xbee.send(txRequest);
-
-  delay(TX_COMMAND_DELAY);
 
   //wait for an ack.
   returnPacketStates responseStatus = readPacketBuffer();
@@ -188,8 +203,7 @@ void sendTxPositionPacket(int16_t *stepperPos) {
     Serial.println("Pos packet failed!");
 #endif
   }
-
-
+  delay(TX_COMMAND_DELAY);
 }
 
 returnPacketStates readPacketBuffer() { //Enumerated return vals!
@@ -282,8 +296,8 @@ returnPacketStates readPacketBuffer() { //Enumerated return vals!
     returnStatus = COMM_FAIL;
 
   }
-  cleanPayload();
-  cleanRXPacket();
+  //cleanPayload();
+  //cleanRXPacket();
   return returnStatus;
 }
 
@@ -355,12 +369,19 @@ void setupXbeeGlobalSettings() {
 
 void runControllerSlice() {
   //Sample the pots, map them to the step space and then send at regular intervals.
-  //Debug messages
-#if DEBUG_MODE == 1
-  //Serial.println("Start Cont Slice");
-#endif
+  //Should we check if the other XBEE is connected and responding?
 
-  readPots();
+
+  readPots(); //Read the pot values
+  eliminateJitter(); //Eliminate jittery readings by making them a bit "sticky"
+  
+  #if DEBUG_MODE == 1
+  debugPotVals();
+  #endif
+  
+  convertToStepPosition(); //Convert the potvals to steps for each of the steppers. Output is in the potConvertedToSteps[] array.
+  sendTxPositionPacket(potConvertedToSteps); //Send out the stepperPosition!
+  
 
 }
 
@@ -403,11 +424,13 @@ void setupControllerSerial() {
 
 void readPots() {
   //Read and average the pots
-  uint32_t average[3] = {
-    0,0,0          }; //temp
+  uint32_t average[STEPPER_COUNT];
+  for (int i = 0; i < STEPPER_COUNT; i++) { //Zero out the array
+    average[i] = 0;
+  }
 
   for (int i = 0; i < iterations; i++ ) { //get vals from all the pins and average them all out
-    for (int x = 0; x < 3; x++){
+    for (int x = 0; x < STEPPER_COUNT; x++){
 
       int16_t boundsCheck = analogRead(potPins[x]);
 
@@ -421,14 +444,42 @@ void readPots() {
     }
   }
 
-  for (int i = 0; i < 3; i++) { //average it out
+  for (int i = 0; i < STEPPER_COUNT; i++) { //average it out
     potVals[i] = average[i]/iterations;
-#if DEBUG_MODE
+  }
+
+}
+
+void eliminateJitter() {
+ //remembers the old potvals and then, if the change is not big enough ignores the change and leaves.
+ for (int i = 0; i < STEPPER_COUNT; i++) {
+   if (potVals[i] == oldPotVals[i] + 1 || potVals[i] == oldPotVals[i] - 1) {
+    //Then we should just ignore this tiny change in vals;
+   potVals[i] = oldPotVals[i]; 
+   } else {
+    //There was a significant change in vals. Let us reset our old reference vals and allow the change
+   oldPotVals[i] = potVals[i]; 
+   }
+ }
+ 
+}
+
+void debugPotVals() {
+  //Only to be called if DEBUG_MODE == 1
+  for (int i = 0; i < STEPPER_COUNT; i++) { //average it out
     Serial.print("Pot");
     Serial.print(i);
     Serial.print("Val:");
     Serial.println(potVals[i]);
-#endif
-  }
 
+  }
+}
+
+void convertToStepPosition() {
+  //Takes in some potvals and outputs the position in steps that the potval is mapped to.
+  for (int i = 0; i < STEPPER_COUNT; i++){
+   //map!
+  potConvertedToSteps[i] = map(potVals[i], 0, 1023, 0, stepperRanges[i]); 
+  }
+  
 }
