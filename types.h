@@ -1,3 +1,5 @@
+#ifndef TYPES_H
+#define TYPES_H
 
 //The return status codes go like this for the packets.... 
 //This enum must be in the header for compiler reasons.
@@ -17,4 +19,6 @@ enum returnPacketStates {
   AT_ACK_DATA,
   AT_FAIL
 };
+
+#endif
 
