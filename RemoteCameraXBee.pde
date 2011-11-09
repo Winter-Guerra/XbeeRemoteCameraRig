@@ -7,13 +7,13 @@
 
 #define AT_COMMAND_DELAY 10 //In milliseconds
 #define TX_COMMAND_DELAY 20 //In milliseconds. (Ballparked by assuming )
-#define PACKET_TIMEOUT 100
+#define PACKET_TIMEOUT 1000
 
-#define PAYLOAD_LENGTH 10
+#define PAYLOAD_LENGTH 20
 
 
-uint8_t statusLED = 11; //This LED is here just to make sure that the Arduino is on an at least running the program. Should this be a TX/RX light instead?
-uint8_t errorLED = 12; //This LED (RED) will light up if there is an error. It will turn off after a while... 
+uint8_t errorLED1 = 13; //This LED is here just to make sure that the Arduino is on an at least running the program. Should this be a TX/RX light instead?
+uint8_t errorLED2 = 12; //This LED (RED) will light up if there is an error. It will turn off after a while... 
 
 boolean errorState = false;
 uint32_t errorLEDMillis = 0; //This var will keep track of the last time an error was triggered. The error will be dismissed after millis() - errorLEDMillis >= errorTimeout
@@ -52,10 +52,10 @@ const uint16_t yStepperMidpoint = yStepRange/2; //This is the midpoint of the ra
 uint16_t stepperRanges[] = {
   xStepRange, yStepRange};
 
-const uint16_t xStepperAcceleration = 100; //Default speed vals
-const uint16_t yStepperAcceleration = 100;
-const uint16_t xStepperMaxSpeed = 200;
-const uint16_t yStepperMaxSpeed = 200;
+const uint16_t xStepperAcceleration = 800; //Default speed vals
+const uint16_t yStepperAcceleration = 800;
+const uint16_t xStepperMaxSpeed = 1600;
+const uint16_t yStepperMaxSpeed = 1600;
 
 //Analog Inputs
 uint8_t potXPin = 0;
@@ -125,8 +125,8 @@ Rx16Response rx16 = Rx16Response();
 
 
 void setup() {
-  pinMode(statusLED, OUTPUT);
-  pinMode(errorLED, OUTPUT);
+  pinMode(errorLED1, OUTPUT);
+  pinMode(errorLED2, OUTPUT);
 
   pinMode(RTS,INPUT);
   pinMode(CTS,INPUT);
@@ -148,14 +148,14 @@ void setup() {
 }
 
 void loop() {
-#if IS_CONTROLLER
+#if IS_CONTROLLER == 1
   //Run the sampling and TX slice
   runControllerSlice();
 #else
   runCameraSlice();
 #endif
   handleStatusLEDs();
-
+//delay(10);
 }
 
 returnPacketStates readPacketBufferTimeout(uint16_t timeout = PACKET_TIMEOUT) {
@@ -163,7 +163,7 @@ returnPacketStates readPacketBufferTimeout(uint16_t timeout = PACKET_TIMEOUT) {
   uint32_t timeoutMillis = millis();
 
   returnPacketStates responseCode = readPacketBuffer();
-  while (timeoutMillis+timeout < millis() && responseCode == PACKET_NOT_FINISHED){
+  while (timeoutMillis+timeout > millis() && responseCode == PACKET_NOT_FINISHED){
     //A packet has not arrived yet and the timeout still has not expired. Read some more!
     responseCode = readPacketBuffer();
 
@@ -276,7 +276,7 @@ returnPacketStates readPacketBuffer() { //Enumerated return vals!
 #if DEBUG_MODE == 1
     Serial.println("WTF!? A malformed packet?");
 #endif
-    turnOnErrorLED();
+    //turnOnErrorLED();
     returnStatus = COMM_FAIL;
 
   } 
@@ -292,16 +292,16 @@ returnPacketStates readPacketBuffer() { //Enumerated return vals!
 }
 
 void sendAtCommand() {
+ //Send the command then wait for the response
+
+  xbee.send(atRequest);
+  
   //Flush buffer
-#if IS_CONTROLLER == 1
+  #if IS_CONTROLLER == 1
   Serial1.flush();
 #else
   Serial.flush();
 #endif
-
-  //Send the command then wait for the response
-
-  xbee.send(atRequest);
 
   returnPacketStates responseCode = readPacketBufferTimeout(PACKET_TIMEOUT);
   if (responseCode == AT_ACK || responseCode == AT_ACK_DATA) {
@@ -338,7 +338,8 @@ void turnOnErrorLED() {
   //Log the last time an error has been triggered so that the handleStatusLEDs() function knows when to dismiss the error.
   errorLEDMillis = millis();
   errorState = true;
-  digitalWrite(errorLED, HIGH);
+  digitalWrite(errorLED1, HIGH);
+  digitalWrite(errorLED2, HIGH);
 
 }
 
@@ -349,7 +350,8 @@ void handleStatusLEDs() {
     if (millis()-errorLEDMillis >= errorTimeout) {
       //The error has expired!
       errorState = false;
-      digitalWrite(errorLED, LOW);
+      digitalWrite(errorLED1, LOW);
+      digitalWrite(errorLED2, LOW);
     }
   }
 }

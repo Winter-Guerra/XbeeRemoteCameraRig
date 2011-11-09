@@ -50,26 +50,30 @@ uint8_t readRXPacketAndRunCommand() {
 
 void setupCameraPins() {
   //Setup the stepper pins
-  pinMode(xStepperEnable, INPUT);
-  pinMode(yStepperEnable, INPUT);
-  pinMode(xStepperDir, INPUT);
-  pinMode(yStepperDir, INPUT);
-  pinMode(xStepperStep, INPUT);
-  pinMode(yStepperStep, INPUT);
+  pinMode(xStepperEnable, OUTPUT);
+  pinMode(yStepperEnable, OUTPUT);
+  pinMode(xStepperDir, OUTPUT);
+  pinMode(yStepperDir, OUTPUT);
+  pinMode(xStepperStep, OUTPUT);
+  pinMode(yStepperStep, OUTPUT);
 
   //Enable the steppers.
-  digitalWrite(xStepperEnable, HIGH);
-  digitalWrite(yStepperEnable, HIGH);
-
-  //Setup the AccellStepper libraries
-  //The steppers should be at their midpoint
-  xStepper.setCurrentPosition(xStepperMidpoint); 
-  yStepper.setCurrentPosition(yStepperMidpoint); 
+  digitalWrite(xStepperEnable, LOW); //They enable on low. Wierd right?
+  digitalWrite(yStepperEnable, LOW);
+  digitalWrite(xStepperDir, LOW); 
+  digitalWrite(yStepperDir, LOW);
+  digitalWrite(xStepperStep, LOW); 
+  digitalWrite(yStepperStep, LOW);
 
   xStepper.setMaxSpeed(xStepperMaxSpeed);
   xStepper.setAcceleration(xStepperAcceleration);
   yStepper.setMaxSpeed(yStepperMaxSpeed);
   yStepper.setAcceleration(yStepperAcceleration);
+  
+  //Setup the AccellStepper libraries
+  //The steppers should be at their midpoint
+  xStepper.setCurrentPosition(xStepperMidpoint); 
+  yStepper.setCurrentPosition(yStepperMidpoint); 
 
 }
 
@@ -92,17 +96,15 @@ void recieveRxPositionPacket() {
    recievedPayload[i+2] = stepperPos[i] && 0xFF; //Low byte
    }*/
 
+int payloadOffset = 1;
   for (int i = 0; i < STEPPER_COUNT; i++) {
-    stepperTarget[i] = recievedPayload[i+1] << 8;//High byte
-    stepperTarget[i] += recievedPayload[i+2];//Add the low byte
+    stepperTarget[i] = recievedPayload[payloadOffset] << 8;//High byte
+    stepperTarget[i] += recievedPayload[payloadOffset+1];//Add the low byte
+    payloadOffset += 2;
   }
 
   xStepper.moveTo(stepperTarget[0]);//Move it! Move it! I haven't got all day! What is this? Sissy camp! This is bootcamp, move your ass!
   yStepper.moveTo(stepperTarget[1]);
-
-
-
-
   //delay(TX_COMMAND_DELAY); //no need for that here, we are polling as fast as we can.
 }
 

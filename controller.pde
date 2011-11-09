@@ -6,9 +6,11 @@ void sendTxPositionPacket(uint16_t *stepperPos) {
 
   payload[0] = positionCommandCode;
 
+int payloadOffset = 1;
   for (int i = 0; i < STEPPER_COUNT; i++) {
-    payload[i+1] = stepperPos[i] >> 8 && 0xFF; //High byte
-    payload[i+2] = stepperPos[i] && 0xFF; //Low byte
+    payload[payloadOffset] = stepperPos[i] >> 8 & 0xFF; //High byte
+    payload[payloadOffset+1] = stepperPos[i] & 0xFF; //Low byte
+    payloadOffset += 2;
   }
 
 
