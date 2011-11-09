@@ -17,7 +17,7 @@ void sendTxPositionPacket(uint16_t *stepperPos) {
   xbee.send(txRequest);
 
   //wait for an ack.
-  returnPacketStates responseStatus = readPacketBuffer();
+  returnPacketStates responseStatus = readPacketBufferTimeout(PACKET_TIMEOUT);
   if (responseStatus == TX_ACK) {
     //success! 
   } 

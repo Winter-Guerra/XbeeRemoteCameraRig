@@ -18,27 +18,34 @@ void runCameraSlice() {
   //check if a new packet is available. If so, log the time it has been since the last packet to try to gauge the average packet delay.
   //calculate the speed the steppers need to run at to get to their destination position based on delta and the time till the next pack
 
-//Check if we have a packet.
-returnPacketStates responseCode = readPacketBuffer();
-if (responseCode == RX_PACKET) {
- //Sweet! We got a command packet!
-//lets copy over the payload and then check what command we got.
-readRXPacketAndRunCommand();
-}
+  //Check if we have a packet.
+  returnPacketStates responseCode = readPacketBufferTimeout(PACKET_TIMEOUT);
+  if (responseCode == RX_PACKET) {
+    //Sweet! We got a command packet!
+    //lets copy over the payload and then check what command we got.
+    readRXPacketAndRunCommand();
+  }
+
+  runSteppers(); //Run the steppers.
 }
 
-uint8_t readRXPacketAndGetCommand() {
+void runSteppers() {
+  xStepper.run();
+  yStepper.run();
+}
+
+uint8_t readRXPacketAndRunCommand() {
   cleanRecievedPayload(); //Clean up workspace
 
-for (int i = 0; i < rx16.getDataLength(); i++) { //Copy the payload over byte by byte
-  recievedPayload[i] = rx16.getData()[i];
-}
+  for (int i = 0; i < rx16.getDataLength(); i++) { //Copy the payload over byte by byte
+    recievedPayload[i] = rx16.getData()[i];
+  }
 
-if (recievedPayload[0] == positionCommandCode) {
- //We have a new waypoint. 
- recieveRxPositionPacket(); //Get & set the position!
-}
- 
+  if (recievedPayload[0] == positionCommandCode) {
+    //We have a new waypoint. 
+    recieveRxPositionPacket(); //Get & set the position!
+  }
+
 }
 
 void setupCameraPins() {
@@ -63,7 +70,7 @@ void setupCameraPins() {
   xStepper.setAcceleration(xStepperAcceleration);
   yStepper.setMaxSpeed(yStepperMaxSpeed);
   yStepper.setAcceleration(yStepperAcceleration);
-  
+
 }
 
 void setupCameraSerial() {
@@ -76,7 +83,7 @@ void setupCameraSerial() {
 
 void recieveRxPositionPacket() {
   //Recieve a packet from the controller containing a stepper x and y pos
-  
+
   //We are assuming that the packet was already checked for what commandcode it had
   //Ignore whatever was in the [0] slot.
 
@@ -89,7 +96,7 @@ void recieveRxPositionPacket() {
     stepperTarget[i] = recievedPayload[i+1] << 8;//High byte
     stepperTarget[i] += recievedPayload[i+2];//Add the low byte
   }
-  
+
   xStepper.moveTo(stepperTarget[0]);//Move it! Move it! I haven't got all day! What is this? Sissy camp! This is bootcamp, move your ass!
   yStepper.moveTo(stepperTarget[1]);
 
@@ -100,5 +107,6 @@ void recieveRxPositionPacket() {
 }
 
 #endif
+
 
 

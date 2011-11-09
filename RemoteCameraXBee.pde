@@ -7,6 +7,7 @@
 
 #define AT_COMMAND_DELAY 10 //In milliseconds
 #define TX_COMMAND_DELAY 20 //In milliseconds. (Ballparked by assuming )
+#define PACKET_TIMEOUT 100
 
 #define PAYLOAD_LENGTH 10
 
@@ -48,7 +49,8 @@ const uint16_t yStepsPerRotation = yMicroStepping * yStepperStepsPerRotation * y
 const uint16_t yStepRange = (yStepsPerRotation)/4; //This axis can rotate 270 degrees 
 const uint16_t yStepperMidpoint = yStepRange/2; //This is the midpoint of the range. The stepper should start out in this position when the controller is turned on.
 
-uint16_t stepperRanges[] = {xStepRange, yStepRange};
+uint16_t stepperRanges[] = {
+  xStepRange, yStepRange};
 
 const uint16_t xStepperAcceleration = 100; //Default speed vals
 const uint16_t yStepperAcceleration = 100;
@@ -66,7 +68,8 @@ uint8_t potPins[] = {
 
 uint16_t potVals[STEPPER_COUNT]; //Potval containers
 uint16_t potConvertedToSteps[STEPPER_COUNT]; //Potvals converted to steps
-uint16_t oldPotVals[] = {0,0}; //For anti-jitter purposes
+uint16_t oldPotVals[] = {
+  0,0}; //For anti-jitter purposes
 uint8_t iterations = 4; //averaging iterations
 
 uint16_t stepperTarget[STEPPER_COUNT];
@@ -151,42 +154,45 @@ void loop() {
 #else
   runCameraSlice();
 #endif
-handleStatusLEDs();
-  
+  handleStatusLEDs();
+
 }
 
-
-void sendAtCommand() {
-  //Flush buffer
-  #if IS_CONTROLLER == 1
-  Serial1.flush();
-  #else
-  Serial.flush();
-  #endif
-
-  //Send the command then wait for the response
-
-  xbee.send(atRequest);
+returnPacketStates readPacketBufferTimeout(uint16_t timeout = PACKET_TIMEOUT) {
+  //This is a wrapper to the readPacketBuffer. It will read for a packet until the timeout expires
+  uint32_t timeoutMillis = millis();
 
   returnPacketStates responseCode = readPacketBuffer();
-  if (responseCode == AT_ACK || responseCode == AT_ACK_DATA) {
-    //success! we got a packet! Now lets just double check here...
-    //Nope! Good enough for me!
-  } 
-  else {
-    //error!
+  while (timeoutMillis+timeout < millis() && responseCode == PACKET_NOT_FINISHED){
+    //A packet has not arrived yet and the timeout still has not expired. Read some more!
+    responseCode = readPacketBuffer();
+
+    //Handle some camera stuff:
+#if IS_CONTROLLER != 1
+    //Continue to step the steppers while we are stuck waiting for a packet.
+    runSteppers();
+#endif
+
+  }
+  //Ok, so we are done polling for some reason
+  if (responseCode == PACKET_NOT_FINISHED) {
+    //We did not recieve a packet. Return a fail.
+    responseCode = COMM_FAIL;
+
+#if IS_CONTROLLER == 1
+    //Also report a error b/c this should not happen
     turnOnErrorLED();
-#if DEBUG_MODE
-    Serial.println("AT Error");
 #endif
   }
-  delay(AT_COMMAND_DELAY); //Delay to not overload the XBee input line
+
+  return responseCode;//Well! Done!
 }
 
 returnPacketStates readPacketBuffer() { //Enumerated return vals!
   returnPacketStates returnStatus = COMM_FAIL;
   //The return status codes go like this.... 
   //COMM_FAIL is no packet was recieved Is the device unplugged?
+  //PACKET_NOT_FINISHED is no packet was read. Mind waiting for a bit?
   //TX_ACK is TX ACK
   //TX_FAIL is TX FAILED
   //RX_PACKET is RX
@@ -195,8 +201,9 @@ returnPacketStates readPacketBuffer() { //Enumerated return vals!
   //AT_FAIL is AT FAIL
 
     // after sending a TX request, we expect a status response
-  // wait up to 500 mseconds for the status response
-  if (xbee.readPacket(500)) {
+  //Don't wait, just poll. We will have another wrapper handling the repeated calls
+  xbee.readPacket();
+  if (xbee.getResponse().isAvailable()) {
     // got a response!
 
     if (xbee.getResponse().getApiId() == AT_COMMAND_RESPONSE) { //We got a response to our AT command!
@@ -264,18 +271,51 @@ returnPacketStates readPacketBuffer() { //Enumerated return vals!
     }
 
   } 
-  else {
-    // local XBee did not provide a timely TX Status Response -- should not happen
-    #if DEBUG_MODE == 1
-    Serial.println("Wait, WTF? The Xbee did not respond!!!!");
-    #endif
+  else if (xbee.getResponse().isError()) {
+    // local XBee recieved a malformed packet.
+#if DEBUG_MODE == 1
+    Serial.println("WTF!? A malformed packet?");
+#endif
     turnOnErrorLED();
     returnStatus = COMM_FAIL;
+
+  } 
+  else {
+    //The packet did not arrive yet. That's disturbing but still ok.
+    //Just exit and pass the ball to the wrapper. It can decide whether to poll again.
+    returnStatus = PACKET_NOT_FINISHED;
 
   }
   //cleanPayload();
   //cleanRXPacket();
   return returnStatus;
+}
+
+void sendAtCommand() {
+  //Flush buffer
+#if IS_CONTROLLER == 1
+  Serial1.flush();
+#else
+  Serial.flush();
+#endif
+
+  //Send the command then wait for the response
+
+  xbee.send(atRequest);
+
+  returnPacketStates responseCode = readPacketBufferTimeout(PACKET_TIMEOUT);
+  if (responseCode == AT_ACK || responseCode == AT_ACK_DATA) {
+    //success! we got a packet! Now lets just double check here...
+    //Nope! Good enough for me!
+  } 
+  else {
+    //error!
+    turnOnErrorLED();
+#if DEBUG_MODE
+    Serial.println("AT Error");
+#endif
+  }
+  delay(AT_COMMAND_DELAY); //Delay to not overload the XBee input line
 }
 
 
@@ -294,24 +334,24 @@ void cleanRecievedPayload() {
 }
 
 void turnOnErrorLED() {
- //Crap! There has been an error! Quick! Flash some red leds! That should fix the problem!
-//Log the last time an error has been triggered so that the handleStatusLEDs() function knows when to dismiss the error.
-errorLEDMillis = millis();
-errorState = true;
+  //Crap! There has been an error! Quick! Flash some red leds! That should fix the problem!
+  //Log the last time an error has been triggered so that the handleStatusLEDs() function knows when to dismiss the error.
+  errorLEDMillis = millis();
+  errorState = true;
   digitalWrite(errorLED, HIGH);
 
 }
 
 void handleStatusLEDs() {
- //Check the states of the error LEDs and turn them off if the error has not been seen for a while 
-if (errorState == true) { 
-  //There has been an error recently, lets see if it's time to dismiss.
-if (millis()-errorLEDMillis >= errorTimeout) {
-   //The error has expired!
-   errorState = false;
-   digitalWrite(errorLED, LOW);
- }
-}
+  //Check the states of the error LEDs and turn them off if the error has not been seen for a while 
+  if (errorState == true) { 
+    //There has been an error recently, lets see if it's time to dismiss.
+    if (millis()-errorLEDMillis >= errorTimeout) {
+      //The error has expired!
+      errorState = false;
+      digitalWrite(errorLED, LOW);
+    }
+  }
 }
 
 void setupXbeeGlobalSettings() {
@@ -328,4 +368,5 @@ void setupXbeeGlobalSettings() {
     atRequest = AtCommandRequest(ATAC); //Apply changes
   sendAtCommand();//Send the command
 }
+
 

@@ -12,6 +12,7 @@
 //32 is AT FAIL
 enum returnPacketStates {
   COMM_FAIL,
+  PACKET_NOT_FINISHED,
   TX_ACK,
   TX_FAIL,
   RX_PACKET,
