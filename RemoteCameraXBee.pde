@@ -1,7 +1,7 @@
 #include <XBee.h>
 #include "types.h"
 
-#define IS_CONTROLLER 0 //Is this the camera controller? Or the reciever?
+#define IS_CONTROLLER 1 //Is this the camera controller? Or the reciever?
 #define DEBUG_MODE IS_CONTROLLER && 1 //Do we want debug output on the serial line?
 
 
@@ -11,9 +11,19 @@
 
 #define PAYLOAD_LENGTH 20
 
-
+//*****ERROR AND STATUS LEDS***/// 
+//Both the status and error leds were soldered to different pins on the controller and camera reciever.
+#if IS_CONTROLLER == 1
+uint8_t errorLED1 = 7; //This LED is here just to make sure that the Arduino is on an at least running the program. Should this be a TX/RX light instead?
+#else
 uint8_t errorLED1 = 13; //This LED is here just to make sure that the Arduino is on an at least running the program. Should this be a TX/RX light instead?
+#endif
+
+#if IS_CONTROLLER == 1
+uint8_t errorLED2 = 6; //On the controller board, this led was soldered to the wrong pin.
+#else
 uint8_t errorLED2 = 12; //This LED (RED) will light up if there is an error. It will turn off after a while... 
+#endif
 
 boolean errorState = false;
 uint32_t errorLEDMillis = 0; //This var will keep track of the last time an error was triggered. The error will be dismissed after millis() - errorLEDMillis >= errorTimeout
@@ -34,15 +44,15 @@ uint8_t xStepperStep = 9;
 uint8_t yStepperStep = 10;
 
 //Vars for the X rot axis (pan)
-const uint8_t xMicroStepping = 16; //Microsteps per step
+const uint8_t xMicroStepping = 8; //Microsteps per step
 const uint8_t xGearRatio = 2; //for every rotation of the big gear, the stepper gear must rotate this many times.
 const uint16_t xStepperStepsPerRotation = 200;
 const uint16_t xStepsPerRotation = xMicroStepping * xStepperStepsPerRotation * xGearRatio; //steps per rotation.
-const uint16_t xStepRange = (xStepsPerRotation*3)/4; //This axis only has 360/4 degrees of motion (90 degrees)
+const uint16_t xStepRange = (xStepsPerRotation)/2; //This axis only has 360/4 degrees of motion (90 degrees)
 const uint16_t xStepperMidpoint = xStepRange/2; //This is the midpoint of the range. The stepper should start out in this position when the controller is turned on.
 
 //Vars for the Y rot axis (Up/Down pitch)
-const uint8_t yMicroStepping = 16; //Microsteps per step
+const uint8_t yMicroStepping = 8; //Microsteps per step
 const uint8_t yGearRatio = 2; //for every rotation of the big gear, the stepper gear must rotate this many times.
 const uint16_t yStepperStepsPerRotation = 200;
 const uint16_t yStepsPerRotation = yMicroStepping * yStepperStepsPerRotation * yGearRatio; //steps per rotation.
@@ -338,7 +348,7 @@ void turnOnErrorLED() {
   //Log the last time an error has been triggered so that the handleStatusLEDs() function knows when to dismiss the error.
   errorLEDMillis = millis();
   errorState = true;
-  digitalWrite(errorLED1, HIGH);
+  //digitalWrite(errorLED1, HIGH);
   digitalWrite(errorLED2, HIGH);
 
 }
