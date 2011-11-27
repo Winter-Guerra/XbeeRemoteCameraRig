@@ -14,15 +14,15 @@
 //*****ERROR AND STATUS LEDS***/// 
 //Both the status and error leds were soldered to different pins on the controller and camera reciever.
 #if IS_CONTROLLER == 1
-uint8_t errorLED1 = 7; //This LED is here just to make sure that the Arduino is on an at least running the program. Should this be a TX/RX light instead?
+uint8_t statusLED = 7; //This LED is here just to make sure that the Arduino is on an at least running the program. Should this be a TX/RX light instead?
 #else
-uint8_t errorLED1 = 13; //This LED is here just to make sure that the Arduino is on an at least running the program. Should this be a TX/RX light instead?
+uint8_t statusLED = 13; //This LED is here just to make sure that the Arduino is on an at least running the program. Should this be a TX/RX light instead?
 #endif
 
 #if IS_CONTROLLER == 1
-uint8_t errorLED2 = 6; //On the controller board, this led was soldered to the wrong pin.
+uint8_t errorLED = 6; //On the controller board, this led was soldered to the wrong pin.
 #else
-uint8_t errorLED2 = 12; //This LED (RED) will light up if there is an error. It will turn off after a while... 
+uint8_t errorLED = 12; //This LED (RED) will light up if there is an error. It will turn off after a while... 
 #endif
 
 boolean errorState = false;
@@ -135,11 +135,14 @@ Rx16Response rx16 = Rx16Response();
 
 
 void setup() {
-  pinMode(errorLED1, OUTPUT);
-  pinMode(errorLED2, OUTPUT);
+  pinMode(statusLED, OUTPUT);
+  pinMode(errorLED, OUTPUT);
 
   pinMode(RTS,INPUT);
   pinMode(CTS,INPUT);
+  
+  //Lets turn on our green light to show everybody that the computer has achieved sentience!
+digitalWrite(statusLED, HIGH);
 
 #if IS_CONTROLLER == 1 
   setupControllerPins();
@@ -348,8 +351,8 @@ void turnOnErrorLED() {
   //Log the last time an error has been triggered so that the handleStatusLEDs() function knows when to dismiss the error.
   errorLEDMillis = millis();
   errorState = true;
-  //digitalWrite(errorLED1, HIGH);
-  digitalWrite(errorLED2, HIGH);
+  digitalWrite(statusLED, LOW); //This is a status LED! Not a error led dumb person! Toggle it inversely!
+  digitalWrite(errorLED, HIGH);
 
 }
 
@@ -360,8 +363,8 @@ void handleStatusLEDs() {
     if (millis()-errorLEDMillis >= errorTimeout) {
       //The error has expired!
       errorState = false;
-      digitalWrite(errorLED1, LOW);
-      digitalWrite(errorLED2, LOW);
+      digitalWrite(statusLED, HIGH); //YAY! The green light of not-doom is back on!
+      digitalWrite(errorLED, LOW);
     }
   }
 }
