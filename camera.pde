@@ -1,10 +1,9 @@
-#if IS_CONTROLLER == 0
-
-#include <AccelStepper.h>
+#if IS_CONTROLLER != 1
 
 // Define some steppers and the pins the will use. These are reusable instances.
 AccelStepper xStepper(1, xStepperStep, xStepperDir); //Step,Direction
 AccelStepper yStepper(1, yStepperStep, yStepperDir); //Step, Direction
+
 
 void setupXbeeCameraAddress() {
   //Send address settup commands to XBEE 
@@ -109,6 +108,7 @@ int payloadOffset = 1;
 }
 
 #endif
+
 
 
 

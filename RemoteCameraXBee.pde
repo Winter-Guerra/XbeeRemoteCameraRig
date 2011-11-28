@@ -1,15 +1,25 @@
+//***GLOBAL INCLUDES***//
+#include "WProgram.h"
+#include "settings.h"
 #include <XBee.h>
 #include "types.h"
 
-#define IS_CONTROLLER 1 //Is this the camera controller? Or the reciever?
-#define DEBUG_MODE IS_CONTROLLER && 1 //Do we want debug output on the serial line?
 
 
-#define AT_COMMAND_DELAY 10 //In milliseconds
-#define TX_COMMAND_DELAY 20 //In milliseconds. (Ballparked by assuming )
-#define PACKET_TIMEOUT 1000
 
-#define PAYLOAD_LENGTH 20
+
+
+
+
+
+
+
+//****INDIVIDUAL INCLUDES FOR CAMERA AND CONTROLLER***/
+#if IS_CONTROLLER == 1
+#include "controller.h"
+#else
+#include "camera.h"
+#endif
 
 //*****ERROR AND STATUS LEDS***/// 
 //Both the status and error leds were soldered to different pins on the controller and camera reciever.
@@ -26,7 +36,7 @@ uint8_t errorLED = 12; //This LED (RED) will light up if there is an error. It w
 #endif
 
 boolean errorState = false;
-uint32_t errorLEDMillis = 0; //This var will keep track of the last time an error was triggered. The error will be dismissed after millis() - errorLEDMillis >= errorTimeout
+uint32_t errorLEDMillis = 0; //This var will keep track of the last time an error was triggered. The error will be dismissed after millis() - errorLEDMillis >= eorTimeout
 uint32_t errorTimeout = 500; //This is the time after the error is triggered to dismiss it.
 
 uint8_t RTS = 2; //Arduino must pull this high if it wants the Xbee to stop sending (unused)
@@ -115,15 +125,12 @@ uint8_t ATWR[] = {
 uint8_t ATAC[] = { 
   'A', 'C' }; //Apply changes to xbee
 
-
-
 //Packet command codes
 const uint8_t positionCommandCode = 0x01;
 const uint8_t positionResetCommandCode = 0x02;
 const uint8_t positionTrimCommandCode = 0x03;
 
-
-
+//*****GLOBAL FUNCTION PROTOTYPES****//
 
 //*****Reusable Instances!!******//
 XBee xbee = XBee(); //Instantiate a new xbee instance
@@ -140,9 +147,9 @@ void setup() {
 
   pinMode(RTS,INPUT);
   pinMode(CTS,INPUT);
-  
+
   //Lets turn on our green light to show everybody that the computer has achieved sentience!
-digitalWrite(statusLED, HIGH);
+  digitalWrite(statusLED, HIGH);
 
 #if IS_CONTROLLER == 1 
   setupControllerPins();
@@ -168,7 +175,7 @@ void loop() {
   runCameraSlice();
 #endif
   handleStatusLEDs();
-//delay(10);
+  //delay(10);
 }
 
 returnPacketStates readPacketBufferTimeout(uint16_t timeout = PACKET_TIMEOUT) {
@@ -223,7 +230,7 @@ returnPacketStates readPacketBuffer() { //Enumerated return vals!
       xbee.getResponse().getAtCommandResponse(atResponse);
 
       if (atResponse.isOk()) {
-#if DEBUG_MODE
+#if DEBUG_MODE == 1
         Serial.print("Command [");
         Serial.print(atResponse.getCommand()[0]);
         Serial.print(atResponse.getCommand()[1]);
@@ -231,7 +238,7 @@ returnPacketStates readPacketBuffer() { //Enumerated return vals!
 #endif
 
         if (atResponse.getValueLength() > 0) {
-#if DEBUG_MODE
+#if DEBUG_MODE == 1
           Serial.print("Command value length is ");
           Serial.println(atResponse.getValueLength(), DEC);
 
@@ -253,7 +260,7 @@ returnPacketStates readPacketBuffer() { //Enumerated return vals!
       } 
       else {
         turnOnErrorLED();
-#if DEBUG_MODE
+#if DEBUG_MODE == 1
         Serial.print("Command return error code: ");
         Serial.println(atResponse.getStatus(), HEX);
 #endif
@@ -263,7 +270,7 @@ returnPacketStates readPacketBuffer() { //Enumerated return vals!
     else if (xbee.getResponse().getApiId() == RX_16_RESPONSE) {
       xbee.getResponse().getRx16Response(rx16); //put it into storage, we will check it later.  
       returnStatus = RX_PACKET;
-#if DEBUG_MODE
+#if DEBUG_MODE == 1
       Serial.println("We got a RX packet!");
 #endif
     }
@@ -305,12 +312,12 @@ returnPacketStates readPacketBuffer() { //Enumerated return vals!
 }
 
 void sendAtCommand() {
- //Send the command then wait for the response
+  //Send the command then wait for the response
 
   xbee.send(atRequest);
-  
+
   //Flush buffer
-  #if IS_CONTROLLER == 1
+#if IS_CONTROLLER == 1
   Serial1.flush();
 #else
   Serial.flush();
@@ -324,7 +331,7 @@ void sendAtCommand() {
   else {
     //error!
     turnOnErrorLED();
-#if DEBUG_MODE
+#if DEBUG_MODE == 1
     Serial.println("AT Error");
 #endif
   }
@@ -383,5 +390,8 @@ void setupXbeeGlobalSettings() {
     atRequest = AtCommandRequest(ATAC); //Apply changes
   sendAtCommand();//Send the command
 }
+
+
+
 
 

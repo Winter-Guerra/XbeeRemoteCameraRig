@@ -45,7 +45,8 @@ void runControllerSlice() {
 
 
   readPots(); //Read the pot values
-  eliminateJitter(); //Eliminate jittery readings by making them a bit "sticky"
+  //***Good idea, but not really neccesary and a bit overkill on the "sticky"
+  //eliminateJitter(); //Eliminate jittery readings by making them a bit "sticky"
   
   #if DEBUG_MODE == 1
   debugPotVals();
@@ -99,7 +100,7 @@ void readPots() {
 }
 
 void eliminateJitter() {
- //remembers the old potvals and then, if the change is not big enough ignores the change and leaves.
+ //remembers the old potvals and then, if the change is not big enough ignore the change and leave.
  for (int i = 0; i < STEPPER_COUNT; i++) {
    if (potVals[i] == oldPotVals[i] + 1 || potVals[i] == oldPotVals[i] - 1) {
     //Then we should just ignore this tiny change in vals;
@@ -133,3 +134,4 @@ void convertToStepPosition() {
 }
 
 #endif
+
