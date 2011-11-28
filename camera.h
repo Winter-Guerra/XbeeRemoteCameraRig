@@ -1,5 +1,8 @@
-#include <AccelStepper.h>
+#ifndef CAMERA_H
+#define CAMERA_H
 
+#if IS_CONTROLLER != 1
+//#include </Applications/Arduino.app/Contents/Resources/Java/libraries/AccelStepper/AccelStepper.h>
 
 void setupXbeeCameraAddress();
 
@@ -14,6 +17,5 @@ void setupCameraPins();
 void setupCameraSerial();
 
 void recieveRxPositionPacket();
-
-
-
+#endif
+#endif

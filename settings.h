@@ -1,4 +1,7 @@
-#define IS_CONTROLLER 0 //Is this the camera controller? Or the reciever?
+#ifndef SETTINGS_H
+#define SETTINGS_H
+
+#define IS_CONTROLLER 1 //Is this the camera controller? Or the reciever?
 #define DEBUG_MODE IS_CONTROLLER && 1 //Do we want debug output on the serial line?
 
 
@@ -8,3 +11,4 @@
 
 #define PAYLOAD_LENGTH 20
 
+#endif

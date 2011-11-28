@@ -1,33 +1,17 @@
-//***GLOBAL INCLUDES***//
-#include "WProgram.h"
+#include <stdint.h>
 #include "settings.h"
 #include <XBee.h>
+#include <AccelStepper.h>
 #include "types.h"
 
-
-
-
-
-
-
-
-
-
-
-//****INDIVIDUAL INCLUDES FOR CAMERA AND CONTROLLER***/
-#if IS_CONTROLLER == 1
+//****INDIVIDUAL INCLUDES FOR CAMERA AND CONTROLLER***
 #include "controller.h"
-#else
 #include "camera.h"
-#endif
 
-//*****ERROR AND STATUS LEDS***/// 
-//Both the status and error leds were soldered to different pins on the controller and camera reciever.
-#if IS_CONTROLLER == 1
-uint8_t statusLED = 7; //This LED is here just to make sure that the Arduino is on an at least running the program. Should this be a TX/RX light instead?
-#else
-uint8_t statusLED = 13; //This LED is here just to make sure that the Arduino is on an at least running the program. Should this be a TX/RX light instead?
-#endif
+
+//*****ERROR AND STATUS LEDS***
+uint8_t statusLED = 7; //This is the external LED on the controller board.
+//TODO: Add a new status LED for the camera board that uses pin 13.
 
 #if IS_CONTROLLER == 1
 uint8_t errorLED = 6; //On the controller board, this led was soldered to the wrong pin.
@@ -70,7 +54,7 @@ const uint16_t yStepRange = (yStepsPerRotation)/4; //This axis can rotate 270 de
 const uint16_t yStepperMidpoint = yStepRange/2; //This is the midpoint of the range. The stepper should start out in this position when the controller is turned on.
 
 uint16_t stepperRanges[] = {
-  xStepRange, yStepRange};
+xStepRange, yStepRange};
 
 const uint16_t xStepperAcceleration = 800; //Default speed vals
 const uint16_t yStepperAcceleration = 800;
@@ -84,12 +68,12 @@ uint8_t potZPin = 2;
 
 //Array to quickly access, save and send the analog data
 uint8_t potPins[] = {
-  potXPin,potYPin,potZPin};
+potXPin,potYPin,potZPin};
 
 uint16_t potVals[STEPPER_COUNT]; //Potval containers
 uint16_t potConvertedToSteps[STEPPER_COUNT]; //Potvals converted to steps
 uint16_t oldPotVals[] = {
-  0,0}; //For anti-jitter purposes
+0,0}; //For anti-jitter purposes
 uint8_t iterations = 4; //averaging iterations
 
 uint16_t stepperTarget[STEPPER_COUNT];
@@ -98,32 +82,32 @@ uint16_t stepperTarget[STEPPER_COUNT];
 uint16_t analogMaxVal = 1023;
 
 uint8_t cameraAddress[] = { //Address of the Camera
-  0x10,0x00};
+0x10,0x00};
 uint8_t controllerAddress[] = { //Address of the Controller
-  0x20,0x00};
+0x20,0x00};
 
 uint16_t cameraAddress16 = (cameraAddress[0] << 8) + cameraAddress[1]; //16 bit cast
 uint16_t controllerAddress16 = (controllerAddress[0] << 8) + controllerAddress[1]; //16 bit cast
 
 uint8_t channel[] = {
-  0x11}; //Channel
+0x11}; //Channel
 uint8_t panID[] = {
-  0x11,0x11}; //Personal Area Network
+0x11,0x11}; //Personal Area Network
 
 uint8_t payload[PAYLOAD_LENGTH]; //Payload buffer. Clean this promptly after using!!!!!
 uint8_t recievedPayload[PAYLOAD_LENGTH]; //Buffer for the recieved data. Clean promptly after using!
 
 //XBee AT commands. USE PROGMEM TO SAVE SPACE!
 uint8_t ATMY[] = { 
-  'M', 'Y' }; //my 16 bit address
+'M', 'Y' }; //my 16 bit address
 uint8_t ATCH[] = { 
-  'C', 'H' }; //channel
+'C', 'H' }; //channel
 uint8_t ATID[] = { 
-  'I', 'D' }; //PANID
+'I', 'D' }; //PANID
 uint8_t ATWR[] = { 
-  'W', 'R' }; //write settings to xbee
+'W', 'R' }; //write settings to xbee
 uint8_t ATAC[] = { 
-  'A', 'C' }; //Apply changes to xbee
+'A', 'C' }; //Apply changes to xbee
 
 //Packet command codes
 const uint8_t positionCommandCode = 0x01;
@@ -142,255 +126,254 @@ Rx16Response rx16 = Rx16Response();
 
 
 void setup() {
-  pinMode(statusLED, OUTPUT);
-  pinMode(errorLED, OUTPUT);
+pinMode(statusLED, OUTPUT);
+pinMode(errorLED, OUTPUT);
 
-  pinMode(RTS,INPUT);
-  pinMode(CTS,INPUT);
+pinMode(RTS,INPUT);
+pinMode(CTS,INPUT);
 
-  //Lets turn on our green light to show everybody that the computer has achieved sentience!
-  digitalWrite(statusLED, HIGH);
+//Lets turn on our green light to show everybody that the computer has achieved sentience!
+digitalWrite(statusLED, HIGH);
 
 #if IS_CONTROLLER == 1 
-  setupControllerPins();
-  setupControllerSerial();
-  delay(5000); //Wait for the XBee to initialize. 5 sec pause.
-  setupXbeeControllerAddress();
+setupControllerPins();
+setupControllerSerial();
+delay(5000); //Wait for the XBee to initialize. 5 sec pause.
+setupXbeeControllerAddress();
 #else
-  setupCameraPins();
-  setupCameraSerial();
-  delay(5000); //Wait for the XBee to initialize. 5 sec pause.
-  setupXbeeCameraAddress();
+setupCameraPins();
+setupCameraSerial();
+delay(5000); //Wait for the XBee to initialize. 5 sec pause.
+setupXbeeCameraAddress();
 #endif
 
-  setupXbeeGlobalSettings();
+setupXbeeGlobalSettings();
 
 }
 
 void loop() {
 #if IS_CONTROLLER == 1
-  //Run the sampling and TX slice
-  runControllerSlice();
+//Run the sampling and TX slice
+runControllerSlice();
 #else
-  runCameraSlice();
+runCameraSlice();
 #endif
-  handleStatusLEDs();
-  //delay(10);
+handleStatusLEDs();
+//delay(10);
 }
 
 returnPacketStates readPacketBufferTimeout(uint16_t timeout = PACKET_TIMEOUT) {
-  //This is a wrapper to the readPacketBuffer. It will read for a packet until the timeout expires
-  uint32_t timeoutMillis = millis();
+//This is a wrapper to the readPacketBuffer. It will read for a packet until the timeout expires
+uint32_t timeoutMillis = millis();
 
-  returnPacketStates responseCode = readPacketBuffer();
-  while (timeoutMillis+timeout > millis() && responseCode == PACKET_NOT_FINISHED){
-    //A packet has not arrived yet and the timeout still has not expired. Read some more!
-    responseCode = readPacketBuffer();
+returnPacketStates responseCode = readPacketBuffer();
+while (timeoutMillis+timeout > millis() && responseCode == PACKET_NOT_FINISHED){
+//A packet has not arrived yet and the timeout still has not expired. Read some more!
+responseCode = readPacketBuffer();
 
-    //Handle some camera stuff:
+//Handle some camera stuff:
 #if IS_CONTROLLER != 1
-    //Continue to step the steppers while we are stuck waiting for a packet.
-    runSteppers();
+//Continue to step the steppers while we are stuck waiting for a packet.
+runSteppers();
 #endif
 
-  }
-  //Ok, so we are done polling for some reason
-  if (responseCode == PACKET_NOT_FINISHED) {
-    //We did not recieve a packet. Return a fail.
-    responseCode = COMM_FAIL;
+}
+//Ok, so we are done polling for some reason
+if (responseCode == PACKET_NOT_FINISHED) {
+//We did not recieve a packet. Return a fail.
+responseCode = COMM_FAIL;
 
 #if IS_CONTROLLER == 1
-    //Also report a error b/c this should not happen
-    turnOnErrorLED();
+//Also report a error b/c this should not happen
+turnOnErrorLED();
 #endif
-  }
+}
 
-  return responseCode;//Well! Done!
+return responseCode;//Well! Done!
 }
 
 returnPacketStates readPacketBuffer() { //Enumerated return vals!
-  returnPacketStates returnStatus = COMM_FAIL;
-  //The return status codes go like this.... 
-  //COMM_FAIL is no packet was recieved Is the device unplugged?
-  //PACKET_NOT_FINISHED is no packet was read. Mind waiting for a bit?
-  //TX_ACK is TX ACK
-  //TX_FAIL is TX FAILED
-  //RX_PACKET is RX
-  //AT_ACK is AT ACK
-  //AT_ACK_DATA is AT ACK WITH OUTPUT
-  //AT_FAIL is AT FAIL
+returnPacketStates returnStatus = COMM_FAIL;
+//The return status codes go like this.... 
+//COMM_FAIL is no packet was recieved Is the device unplugged?
+//PACKET_NOT_FINISHED is no packet was read. Mind waiting for a bit?
+//TX_ACK is TX ACK
+//TX_FAIL is TX FAILED
+//RX_PACKET is RX
+//AT_ACK is AT ACK
+//AT_ACK_DATA is AT ACK WITH OUTPUT
+//AT_FAIL is AT FAIL
 
-    // after sending a TX request, we expect a status response
-  //Don't wait, just poll. We will have another wrapper handling the repeated calls
-  xbee.readPacket();
-  if (xbee.getResponse().isAvailable()) {
-    // got a response!
+// after sending a TX request, we expect a status response
+//Don't wait, just poll. We will have another wrapper handling the repeated calls
+xbee.readPacket();
+if (xbee.getResponse().isAvailable()) {
+// got a response!
 
-    if (xbee.getResponse().getApiId() == AT_COMMAND_RESPONSE) { //We got a response to our AT command!
-      xbee.getResponse().getAtCommandResponse(atResponse);
+if (xbee.getResponse().getApiId() == AT_COMMAND_RESPONSE) { //We got a response to our AT command!
+xbee.getResponse().getAtCommandResponse(atResponse);
 
-      if (atResponse.isOk()) {
+if (atResponse.isOk()) {
 #if DEBUG_MODE == 1
-        Serial.print("Command [");
-        Serial.print(atResponse.getCommand()[0]);
-        Serial.print(atResponse.getCommand()[1]);
-        Serial.println("] was successful!");
+Serial.print("Command [");
+Serial.print(atResponse.getCommand()[0]);
+Serial.print(atResponse.getCommand()[1]);
+Serial.println("] was successful!");
 #endif
 
-        if (atResponse.getValueLength() > 0) {
+if (atResponse.getValueLength() > 0) {
 #if DEBUG_MODE == 1
-          Serial.print("Command value length is ");
-          Serial.println(atResponse.getValueLength(), DEC);
+Serial.print("Command value length is ");
+Serial.println(atResponse.getValueLength(), DEC);
 
-          Serial.print("Command value: "); //Is this a masked value? Aka, is a 64 bit addresss passed as one or multiple bytes?
+Serial.print("Command value: "); //Is this a masked value? Aka, is a 64 bit addresss passed as one or multiple bytes?
 
-          for (int i = 0; i < atResponse.getValueLength(); i++) {
-            Serial.print(atResponse.getValue()[i], HEX);
-            Serial.print(" ");
-          }
+for (int i = 0; i < atResponse.getValueLength(); i++) {
+Serial.print(atResponse.getValue()[i], HEX);
+Serial.print(" ");
+}
 
-          Serial.println("");
+Serial.println("");
 #endif
 
-          returnStatus = AT_ACK_DATA;
-        } 
-        else { //The AT command did not return any data. That's ok too! It was sucessful.
-          returnStatus = AT_ACK;
-        }
-      } 
-      else {
-        turnOnErrorLED();
+returnStatus = AT_ACK_DATA;
+} 
+else { //The AT command did not return any data. That's ok too! It was sucessful.
+returnStatus = AT_ACK;
+}
+} 
+else {
+turnOnErrorLED();
 #if DEBUG_MODE == 1
-        Serial.print("Command return error code: ");
-        Serial.println(atResponse.getStatus(), HEX);
+Serial.print("Command return error code: ");
+Serial.println(atResponse.getStatus(), HEX);
 #endif
-        returnStatus = AT_FAIL;
-      }
-    } 
-    else if (xbee.getResponse().getApiId() == RX_16_RESPONSE) {
-      xbee.getResponse().getRx16Response(rx16); //put it into storage, we will check it later.  
-      returnStatus = RX_PACKET;
+returnStatus = AT_FAIL;
+}
+} 
+else if (xbee.getResponse().getApiId() == RX_16_RESPONSE) {
+xbee.getResponse().getRx16Response(rx16); //put it into storage, we will check it later.  
+returnStatus = RX_PACKET;
 #if DEBUG_MODE == 1
-      Serial.println("We got a RX packet!");
+Serial.println("We got a RX packet!");
 #endif
-    }
+}
 
-    else if (xbee.getResponse().getApiId() == TX_STATUS_RESPONSE) {
-      //We got a response to our TX packet!
-      xbee.getResponse().getTxStatusResponse(txStatus); //put it into storage, We will actually check this now though...
-      if (txStatus.isSuccess()){
-        //The TX was successful! WOOT!
-        returnStatus = TX_ACK;
-      } 
-      else {
-        //Awww, The TX was not successful!
-        turnOnErrorLED();
-        returnStatus = TX_FAIL;
-      }  
-      //isSuccess() 
-    }
+else if (xbee.getResponse().getApiId() == TX_STATUS_RESPONSE) {
+//We got a response to our TX packet!
+xbee.getResponse().getTxStatusResponse(txStatus); //put it into storage, We will actually check this now though...
+if (txStatus.isSuccess()){
+//The TX was successful! WOOT!
+returnStatus = TX_ACK;
+} 
+else {
+//Awww, The TX was not successful!
+turnOnErrorLED();
+returnStatus = TX_FAIL;
+}  
+//isSuccess() 
+}
 
-  } 
-  else if (xbee.getResponse().isError()) {
-    // local XBee recieved a malformed packet.
+} 
+else if (xbee.getResponse().isError()) {
+// local XBee recieved a malformed packet.
 #if DEBUG_MODE == 1
-    Serial.println("WTF!? A malformed packet?");
+Serial.println("WTF!? A malformed packet?");
 #endif
-    //turnOnErrorLED();
-    returnStatus = COMM_FAIL;
+//turnOnErrorLED();
+returnStatus = COMM_FAIL;
 
-  } 
-  else {
-    //The packet did not arrive yet. That's disturbing but still ok.
-    //Just exit and pass the ball to the wrapper. It can decide whether to poll again.
-    returnStatus = PACKET_NOT_FINISHED;
+} 
+else {
+//The packet did not arrive yet. That's disturbing but still ok.
+//Just exit and pass the ball to the wrapper. It can decide whether to poll again.
+returnStatus = PACKET_NOT_FINISHED;
 
-  }
-  //cleanPayload();
-  //cleanRXPacket();
-  return returnStatus;
+}
+//cleanPayload();
+//cleanRXPacket();
+return returnStatus;
 }
 
 void sendAtCommand() {
-  //Send the command then wait for the response
+//Send the command then wait for the response
 
-  xbee.send(atRequest);
+xbee.send(atRequest);
 
-  //Flush buffer
+//Flush buffer
 #if IS_CONTROLLER == 1
-  Serial1.flush();
+Serial1.flush();
 #else
-  Serial.flush();
+Serial.flush();
 #endif
 
-  returnPacketStates responseCode = readPacketBufferTimeout(PACKET_TIMEOUT);
-  if (responseCode == AT_ACK || responseCode == AT_ACK_DATA) {
-    //success! we got a packet! Now lets just double check here...
-    //Nope! Good enough for me!
-  } 
-  else {
-    //error!
-    turnOnErrorLED();
+returnPacketStates responseCode = readPacketBufferTimeout(PACKET_TIMEOUT);
+if (responseCode == AT_ACK || responseCode == AT_ACK_DATA) {
+//success! we got a packet! Now lets just double check here...
+//Nope! Good enough for me!
+} 
+else {
+//error!
+turnOnErrorLED();
 #if DEBUG_MODE == 1
-    Serial.println("AT Error");
+Serial.println("AT Error");
 #endif
-  }
-  delay(AT_COMMAND_DELAY); //Delay to not overload the XBee input line
+}
+delay(AT_COMMAND_DELAY); //Delay to not overload the XBee input line
 }
 
 
 void cleanPayload() {
-  for (int i = 0; i < PAYLOAD_LENGTH; i++) {
-    //clean the packet!
-    payload[i] = '\0';
-  }
+for (int i = 0; i < PAYLOAD_LENGTH; i++) {
+//clean the packet!
+payload[i] = '\0';
+}
 }
 
 void cleanRecievedPayload() {
-  for (int i = 0; i < PAYLOAD_LENGTH; i++) {
-    //clean the packet!
-    recievedPayload[i] = '\0';
-  }
+for (int i = 0; i < PAYLOAD_LENGTH; i++) {
+//clean the packet!
+recievedPayload[i] = '\0';
+}
 }
 
 void turnOnErrorLED() {
-  //Crap! There has been an error! Quick! Flash some red leds! That should fix the problem!
-  //Log the last time an error has been triggered so that the handleStatusLEDs() function knows when to dismiss the error.
-  errorLEDMillis = millis();
-  errorState = true;
-  digitalWrite(statusLED, LOW); //This is a status LED! Not a error led dumb person! Toggle it inversely!
-  digitalWrite(errorLED, HIGH);
+//Crap! There has been an error! Quick! Flash some red leds! That should fix the problem!
+//Log the last time an error has been triggered so that the handleStatusLEDs() function knows when to dismiss the error.
+errorLEDMillis = millis();
+errorState = true;
+digitalWrite(statusLED, LOW); //This is a status LED! Not a error led dumb person! Toggle it inversely!
+digitalWrite(errorLED, HIGH);
 
 }
 
 void handleStatusLEDs() {
-  //Check the states of the error LEDs and turn them off if the error has not been seen for a while 
-  if (errorState == true) { 
-    //There has been an error recently, lets see if it's time to dismiss.
-    if (millis()-errorLEDMillis >= errorTimeout) {
-      //The error has expired!
-      errorState = false;
-      digitalWrite(statusLED, HIGH); //YAY! The green light of not-doom is back on!
-      digitalWrite(errorLED, LOW);
-    }
-  }
+//Check the states of the error LEDs and turn them off if the error has not been seen for a while 
+if (errorState == true) { 
+//There has been an error recently, lets see if it's time to dismiss.
+if (millis()-errorLEDMillis >= errorTimeout) {
+//The error has expired!
+errorState = false;
+digitalWrite(statusLED, HIGH); //YAY! The green light of not-doom is back on!
+digitalWrite(errorLED, LOW);
+}
+}
 }
 
 void setupXbeeGlobalSettings() {
-  //Setup and save the rest of the Xbee settings (pan, channel and stuff)
-  atRequest = AtCommandRequest(ATCH,channel,1); //Set our current channel
-  sendAtCommand();//Send the command
+//Setup and save the rest of the Xbee settings (pan, channel and stuff)
+atRequest = AtCommandRequest(ATCH,channel,1); //Set our current channel
+sendAtCommand();//Send the command
 
-    atRequest = AtCommandRequest(ATID,panID,2); //Set our current Personal Area Network
-  sendAtCommand();//Send the command
+atRequest = AtCommandRequest(ATID,panID,2); //Set our current Personal Area Network
+sendAtCommand();//Send the command
 
-    atRequest = AtCommandRequest(ATWR); //Write setting to memory
-  sendAtCommand();//Send the command
+atRequest = AtCommandRequest(ATWR); //Write setting to memory
+sendAtCommand();//Send the command
 
-    atRequest = AtCommandRequest(ATAC); //Apply changes
-  sendAtCommand();//Send the command
+atRequest = AtCommandRequest(ATAC); //Apply changes
+sendAtCommand();//Send the command
 }
-
 
 
 
