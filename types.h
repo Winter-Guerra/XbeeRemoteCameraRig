@@ -21,6 +21,13 @@ enum returnPacketStates {
   AT_FAIL
 };
 
+// This is an enumeration for the state of the controller controls.
+enum movingStates {
+NOT_MOVING,
+MOVING_FORMWARD,
+MOVING_BACKWARD
+};
+
 #endif
 
 

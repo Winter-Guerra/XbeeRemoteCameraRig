@@ -78,8 +78,13 @@ uint8_t iterations = 4; //averaging iterations
 
 uint16_t stepperTarget[STEPPER_COUNT];
 
+//This var holds the state of what the controller thinks is being inputed. If the controls seem to be idle,
+//The var will default to the NOT_MOVING state, this state will lessen the load on the XBees as no control packets will be sent.
+movingStates movingState = NOT_MOVING;
+
 //Values used for mapping the pot rotations to big gear rotations
 uint16_t analogMaxVal = 1023;
+const uint8_t stickyConst = 1;
 
 uint8_t cameraAddress[] = { //Address of the Camera
 0x10,0x00};

@@ -45,8 +45,8 @@ void runControllerSlice() {
 
 
   readPots(); //Read the pot values
-  //***Good idea, but not really neccesary and a bit overkill on the "sticky"
-  //eliminateJitter(); //Eliminate jittery readings by making them a bit "sticky"
+  
+  eliminateJitter(); //Eliminate jittery readings by making them a bit "sticky"
   
   #if DEBUG_MODE == 1
   debugPotVals();
@@ -102,14 +102,19 @@ void readPots() {
 void eliminateJitter() {
  //remembers the old potvals and then, if the change is not big enough ignore the change and leave.
  for (int i = 0; i < STEPPER_COUNT; i++) {
-   if (potVals[i] == oldPotVals[i] + 1 || potVals[i] == oldPotVals[i] - 1) {
+   if (potVals[i] > oldPotVals[i] + stickyConst) { //We had a significant input forward.
+   //I just realized! These should all be objectized! They are all vars dealing with the same object! 
+    movingState = MOVING_FORWARD;
+    oldPotVals[i] = potVals[i];
     //Then we should just ignore this tiny change in vals;
-   potVals[i] = oldPotVals[i]; 
-   } else {
+   //potVals[i] = oldPotVals[i]; 
+   } else if (potVals[i] < oldPotVals[i] - stickyConst) {
     //There was a significant change in vals. Let us reset our old reference vals and allow the change
+    movingState = MOVING_FORWARD;
    oldPotVals[i] = potVals[i]; 
    }
  }
+ 
  
 }
 
